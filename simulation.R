@@ -24,7 +24,7 @@ source("sim_utills/robust_Kraus.R")
 
 # For Boente et al.(2021), you may install the package from the follow code.
 # devtools::install_github('msalibian/sparseFPCA', ref = "master")
-library(sparseFPCA)   # Boente (2021) 
+library(sparseFPCA)   # Boente (2021)
 source("sim_utills/Boente_cov.R")
 
 
@@ -32,13 +32,14 @@ source("sim_utills/Boente_cov.R")
 ### Simulation Model setting
 ### - Model 1 : "Delaigle"
 ### - Model 2 : "Kraus"
+### - Model 3 : "Corr"
 #####################################
 
 ### Model 1
 setting <- "Delaigle"
 K <- 4   # fixed number of PCs (If NULL, it is selected by PVE)
 pve <- 0.95   # Not used if K is given
-bw_cand <- seq(0.01, 0.3, length.out = 10)
+bw_cand <- seq(0.3, 0.4, length.out = 10)
 
 ### Model 2
 setting <- "Kraus"
@@ -46,6 +47,11 @@ K <- 3   # fixed number of PCs (If NULL, it is selected by PVE)
 pve <- 0.95   # Not used if K is given
 bw_cand <- seq(0.01, 0.1, length.out = 10)
 
+### Model 3
+setting <- "Corr"
+K <- 3   # fixed number of PCs (If NULL, it is selected by PVE)
+pve <- 0.95   # Not used if K is given
+bw_cand <- seq(0.01, 0.1, length.out = 10)
 
 
 #####################################
@@ -81,11 +87,10 @@ if (dist_type == "tdist") {
   )
 } else {
   print(
-    paste0("RData/", setting, "-", dist_type, 
+    paste0("RData/", setting, "-", dist_type,
            "-prop", out_prop*10, ".RData")
   )
 }
-
 
 
 #####################################
@@ -106,7 +111,7 @@ mse_reconstr <- matrix(NA, num_sim, 6)
 mse_completion <- matrix(NA, num_sim, 6)
 pve_res <- matrix(NA, num_sim, 6)
 K_res <- matrix(NA, num_sim, 6)
-time_d <- matrix(NA, num_sim, 6) 
+time_d <- matrix(NA, num_sim, 6)
 
 colnames(mse_eigen) <- c("Yao","Kraus","R-Kraus","Boente",
                          "OGK(non-smooth)","OGK(smooth)")
@@ -132,19 +137,29 @@ while (num.sim < num_sim) {
   ### Data generation
   #############################
   n <- 100
-  n.grid <- 51 
+  n.grid <- 51
   if (setting == 'Kraus') {
-    x.2 <- sim_kraus(n = n, 
-                     type = data_type,  
-                     out.prop = out_prop, 
-                     out.type = out_type, 
+    x.2 <- sim_kraus(n = n,
+                     type = data_type,
+                     out.prop = out_prop,
+                     out.type = out_type,
                      dist = dist_type)
   } else if (setting == 'Delaigle') {
-    x.2 <- sim_delaigle(n = n,  
-                        type = data_type, 
-                        out.prop = out_prop, 
-                        out.type = out_type, 
-                        dist = dist_type) 
+    x.2 <- sim_delaigle(n = n,
+                        type = data_type,
+                        out.prop = out_prop,
+                        out.type = out_type,
+                        dist = dist_type)
+  } else if (setting == 'Corr') {
+    r.par <- 150
+    loc_ind <- sample(1:ncol(dist.mat), n)
+    x.2 <- sim_corr(n = n,
+                    type = data_type,
+                    out.prop = out_prop,
+                    out.type = out_type,
+                    dist = dist_type,
+                    dist.mat = dist.mat[loc_ind, loc_ind],
+                    r.par = r.par)
   }
   
   x <- list2matrix(x.2)
@@ -163,11 +178,11 @@ while (num.sim < num_sim) {
   registerDoRNG(seed)
   tryCatch({
     # Not smoothed OGK
-    cov.obj <- cov_ogk(x,  
+    cov.obj <- cov_ogk(x,
                        type = "huber")
     mu.ogk <- cov.obj$mean
     cov.ogk <- cov.obj$cov
-  }, error = function(e) { 
+  }, error = function(e) {
     print("OGK cov error")
     print(e)
     skip_sim <<- TRUE
@@ -176,10 +191,10 @@ while (num.sim < num_sim) {
     next
   }
   end_time <- Sys.time()
-  time_d[num.sim + 1, 5] <- round(difftime(end_time, 
-                                           start_time, 
+  time_d[num.sim + 1, 5] <- round(difftime(end_time,
+                                           start_time,
                                            units = "secs"), 3)
-  print(paste0("OGK : ", 
+  print(paste0("OGK : ",
                time_d[num.sim + 1, 5],
                " secs"))
   
@@ -187,20 +202,20 @@ while (num.sim < num_sim) {
   start_time <- Sys.time()
   registerDoRNG(seed)
   tryCatch({
-    cov.sm.obj.cv <- cv.cov_ogk(x,  
-                                K = 5, 
+    cov.sm.obj.cv <- cv.cov_ogk(x,
+                                K = 5,
                                 bw_cand = bw_cand,
                                 MM = TRUE,
                                 type = 'huber')
     print(cov.sm.obj.cv$selected_bw)
-    cov.obj <- cov_ogk(x,   
+    cov.obj <- cov_ogk(x,
                        type = "huber",
                        MM = TRUE,
-                       smooth = T, 
+                       smooth = T,
                        bw = cov.sm.obj.cv$selected_bw)
     mu.ogk.sm <- cov.obj$mean
     cov.ogk.sm <- cov.obj$cov
-  }, error = function(e) { 
+  }, error = function(e) {
     print("OGK-sm cov error")
     print(e)
     skip_sim <<- TRUE
@@ -209,10 +224,10 @@ while (num.sim < num_sim) {
     next
   }
   end_time <- Sys.time()
-  time_d[num.sim + 1, 6] <- round(difftime(end_time, 
-                                           start_time, 
+  time_d[num.sim + 1, 6] <- round(difftime(end_time,
+                                           start_time,
                                            units = "secs"), 3)
-  print(paste0("OGK-sm : ", 
+  print(paste0("OGK-sm : ",
                time_d[num.sim + 1, 6],
                " secs"))
   
@@ -224,11 +239,12 @@ while (num.sim < num_sim) {
   kern <- ifelse(kernel == "epanechnikov", "epan", kernel)
   optns <- list(methodXi = "CE", dataType = "Sparse", kernel = kern, verbose = FALSE,
                 # userBwMu = bw, userBwCov = bw)
-                kFoldMuCov = 5, methodBwMu = "CV", methodBwCov = "CV", useBinnedCov = FALSE, error=FALSE)
+                kFoldMuCov = 5, methodBwMu = "CV", methodBwCov = "CV",
+                useBinnedCov = FALSE, error = FALSE)
   tryCatch({
     mu.yao.obj <- GetMeanCurve(Ly = x.2$Ly, Lt = x.2$Lt, optns = optns)
     cov.yao.obj <- GetCovSurface(Ly = x.2$Ly, Lt = x.2$Lt, optns = optns)
-  }, error = function(e) { 
+  }, error = function(e) {
     print("Yao cov error")
     print(e)
     skip_sim <<- TRUE
@@ -245,10 +261,10 @@ while (num.sim < num_sim) {
                               Cov = cov.yao.obj$cov)
   }
   end_time <- Sys.time()
-  time_d[num.sim + 1, 1] <- round(difftime(end_time, 
-                                           start_time, 
+  time_d[num.sim + 1, 1] <- round(difftime(end_time,
+                                           start_time,
                                            units = "secs"), 3)
-  print(paste0("Yao et al. : ", 
+  print(paste0("Yao et al. : ",
                time_d[num.sim + 1, 1],
                " secs"))
   
@@ -258,8 +274,8 @@ while (num.sim < num_sim) {
   tryCatch({
     mu.kraus <- mean.missfd(x)
     cov.kraus <- var.missfd(x)
-    # eig.kraus	<- eigen.missfd(cov.kraus)$vectors
-  }, error = function(e) { 
+    # eig.kraus    <- eigen.missfd(cov.kraus)$vectors
+  }, error = function(e) {
     print("Kraus cov error")
     print(e)
     skip_sim <<- TRUE
@@ -268,10 +284,10 @@ while (num.sim < num_sim) {
     next
   }
   end_time <- Sys.time()
-  time_d[num.sim + 1, 2] <- round(difftime(end_time, 
-                                           start_time, 
+  time_d[num.sim + 1, 2] <- round(difftime(end_time,
+                                           start_time,
                                            units = "secs"), 3)
-  print(paste0("Kraus : ", 
+  print(paste0("Kraus : ",
                time_d[num.sim + 1, 2],
                " secs"))
   
@@ -280,9 +296,9 @@ while (num.sim < num_sim) {
   start_time <- Sys.time()
   registerDoRNG(seed)
   tryCatch({
-    mu.Mest <- mean_Mest(x)	
+    mu.Mest <- mean_Mest(x)
     cov.Mest <- cov_Mest(x)
-  }, error = function(e) { 
+  }, error = function(e) {
     print("R-Kraus cov error")
     print(e)
     skip_sim <<- TRUE
@@ -291,10 +307,10 @@ while (num.sim < num_sim) {
     next
   }
   end_time <- Sys.time()
-  time_d[num.sim + 1, 3] <- round(difftime(end_time, 
-                                           start_time, 
+  time_d[num.sim + 1, 3] <- round(difftime(end_time,
+                                           start_time,
                                            units = "secs"), 3)
-  print(paste0("R-Kraus : ", 
+  print(paste0("R-Kraus : ",
                time_d[num.sim + 1, 3],
                " secs"))
   
@@ -312,8 +328,8 @@ while (num.sim < num_sim) {
                                  seed = seed)
     
     # # 5-fold CV
-    # cov.boente.obj <- cov_boente(x.2, 
-    #                              cv = TRUE, 
+    # cov.boente.obj <- cov_boente(x.2,
+    #                              cv = TRUE,
     #                              seed = seed,
     #                              ncores = n_cores)
     mu.boente <- cov.boente.obj$mu
@@ -328,24 +344,24 @@ while (num.sim < num_sim) {
     next
   }
   end_time <- Sys.time()
-  time_d[num.sim + 1, 4] <- round(difftime(end_time, 
-                                           start_time, 
+  time_d[num.sim + 1, 4] <- round(difftime(end_time,
+                                           start_time,
                                            units = "secs"), 3)
-  print(paste0("Boente (2021) : ", 
+  print(paste0("Boente (2021) : ",
                time_d[num.sim + 1, 4],
                " secs"))
   
   
   # if some covariances is a not finite value
-  if (!is.finite(sum(cov.yao)) | !is.finite(sum(cov.Mest)) | 
-      !is.finite(sum(cov.boente)) | !is.finite(sum(cov.kraus)) | 
+  if (!is.finite(sum(cov.yao)) | !is.finite(sum(cov.Mest)) |
+      !is.finite(sum(cov.boente)) | !is.finite(sum(cov.kraus)) |
       !is.finite(sum(cov.ogk)) | !is.finite(sum(cov.ogk.sm))) {
     cat("Estimated covariances do not have finite values. \n")
     next
   }
   
   # if all covariances are 0
-  if ((sum(cov.yao) == 0) | (sum(cov.Mest) == 0) | 
+  if ((sum(cov.yao) == 0) | (sum(cov.Mest) == 0) |
       (sum(cov.boente) == 0) | (sum(cov.kraus) == 0) |
       (sum(cov.ogk) == 0) | (sum(cov.ogk.sm) == 0)) {
     cat("Estimated covariance have all 0 values. \n")
@@ -355,12 +371,12 @@ while (num.sim < num_sim) {
   
   ### Principal component analysis
   # Yao
-  pca.yao.obj <- funPCA(x.2$Lt, x.2$Ly, 
-                        mu.yao, cov.yao, sig2 = 0, 
+  pca.yao.obj <- funPCA(x.2$Lt, x.2$Ly,
+                        mu.yao, cov.yao, sig2 = 0,
                         work.grid, PVE = pve, K = K)
   # Boente
-  pca.boente.obj <- funPCA(x.2$Lt, x.2$Ly, 
-                           mu.boente, cov.boente, sig2 = boente.noise.est, 
+  pca.boente.obj <- funPCA(x.2$Lt, x.2$Ly,
+                           mu.boente, cov.boente, sig2 = boente.noise.est,
                            work.grid, PVE = pve, K = K)
   #  Kraus
   eig.kraus <- get_eigen(cov.kraus, work.grid)
@@ -375,8 +391,8 @@ while (num.sim < num_sim) {
                         PVE = pve_kraus,
                         mu = mu.kraus,
                         cov = cov.kraus,
-                        lambda = eig.kraus$lambda,
-                        eig.fun = eig.kraus$phi)
+                        lambda = eig.kraus$lambda[1:K_kraus],
+                        eig.fun = eig.kraus$phi[, 1:K_kraus])
   # Robust Kraus
   eig.Mkraus <- get_eigen(cov.Mest, work.grid)
   if (!is_null(K)) {
@@ -386,14 +402,14 @@ while (num.sim < num_sim) {
     K_Mkraus <- which(eig.Mkraus$PVE > pve)[1]
     pve_Mkraus <- eig.Mkraus$PVE[K_Mkraus]
   }
-  pca.kraus.obj <- list(K = K_Mkraus,
-                        PVE = pve_Mkraus,
-                        mu = mu.Mest,
-                        cov = cov.Mest,
-                        lambda = eig.Mkraus$lambda,
-                        eig.fun = eig.Mkraus$phi)
+  pca.Mkraus.obj <- list(K = K_Mkraus,
+                         PVE = pve_Mkraus,
+                         mu = mu.Mest,
+                         cov = cov.Mest,
+                         lambda = eig.Mkraus$lambda[1:K_Mkraus],
+                         eig.fun = eig.Mkraus$phi[, 1:K_Mkraus])
   # OGK
-  pca.ogk.obj <- funPCA(x.2$Lt, x.2$Ly, 
+  pca.ogk.obj <- funPCA(x.2$Lt, x.2$Ly,
                         mu.ogk, cov.ogk, sig2 = 0,
                         work.grid, PVE = pve, K = K)
   pca.ogk.sm.obj <- funPCA(x.2$Lt, x.2$Ly,
@@ -406,9 +422,11 @@ while (num.sim < num_sim) {
     mse_eigen[num.sim + 1, ] <- rep(NA, 6)
   } else {
     if (setting == 'Delaigle') {
-      eig.true <- get_delaigle_eigen(work.grid, model = 2) 
+      eig.true <- get_delaigle_eigen(work.grid, model = 2)
     } else if (setting == 'Kraus') {
-      eig.true <- get_kraus_eigen(work.grid) 
+      eig.true <- get_kraus_eigen(work.grid)
+    } else if (setting == 'Corr') {
+      eig.true <- get_corr_eigen(work.grid)
     }
     
     # Eigen MISE
@@ -424,12 +442,42 @@ while (num.sim < num_sim) {
     
     # Eigne angle
     mse_eigen2[num.sim + 1, ] <- c(
-      subspace(pca.yao.obj$eig.fun, eig.true),
-      subspace(pca.kraus.obj$eig.fun, eig.true),
-      subspace(pca.Mkraus.obj$eig.fun, eig.true),
-      subspace(pca.boente.obj$eig.fun, eig.true),
-      subspace(pca.ogk.obj$eig.fun, eig.true),
-      subspace(pca.ogk.sm.obj$eig.fun, eig.true)
+      mean(
+        sapply(1:K, function(i){
+          subspace(pca.yao.obj$eig.fun[, i], eig.true[, i])
+        })
+      ),
+      mean(
+        sapply(1:K, function(i){
+          subspace(pca.kraus.obj$eig.fun[, i], eig.true[, i])
+        })
+      ),
+      mean(
+        sapply(1:K, function(i){
+          subspace(pca.Mkraus.obj$eig.fun[, i], eig.true[, i])
+        })
+      ),
+      mean(
+        sapply(1:K, function(i){
+          subspace(pca.boente.obj$eig.fun[, i], eig.true[, i])
+        })
+      ),
+      mean(
+        sapply(1:K, function(i){
+          subspace(pca.ogk.obj$eig.fun[, i], eig.true[, i])
+        })
+      ),
+      mean(
+        sapply(1:K, function(i){
+          subspace(pca.ogk.sm.obj$eig.fun[, i], eig.true[, i])
+        })
+      )
+      # subspace(pca.yao.obj$eig.fun, eig.true),
+      # subspace(pca.kraus.obj$eig.fun, eig.true),
+      # subspace(pca.Mkraus.obj$eig.fun, eig.true),
+      # subspace(pca.boente.obj$eig.fun, eig.true),
+      # subspace(pca.ogk.obj$eig.fun, eig.true),
+      # subspace(pca.ogk.sm.obj$eig.fun, eig.true)
     )
     
   }
@@ -511,8 +559,8 @@ while (num.sim < num_sim) {
     pca.yao.obj$PVE,
     pca.kraus.obj$PVE,
     pca.Mkraus.obj$PVE,
-    pca.boente.obj$PVE,   
-    pca.ogk.obj$PVE, 
+    pca.boente.obj$PVE,
+    pca.ogk.obj$PVE,
     pca.ogk.sm.obj$PVE
   )
   
@@ -520,8 +568,8 @@ while (num.sim < num_sim) {
     pca.yao.obj$K,
     pca.kraus.obj$K,
     pca.Mkraus.obj$K,
-    pca.boente.obj$K,   
-    pca.ogk.obj$K, 
+    pca.boente.obj$K,
+    pca.ogk.obj$K,
     pca.ogk.sm.obj$K
   )
   
@@ -543,11 +591,11 @@ while (num.sim < num_sim) {
   if (dist_type == "tdist") {
     file_name <- paste0("RData/", setting, "-", dist_type, ".RData")
   } else {
-    file_name <- paste0("RData/", setting, "-", dist_type, 
+    file_name <- paste0("RData/", setting, "-", dist_type,
                         "-prop", out_prop*10, ".RData")
   }
-  save(pca.est, mse_eigen, mse_eigen2, 
-       mse_reconstr, mse_completion, 
+  save(pca.est, mse_eigen, mse_eigen2,
+       mse_reconstr, mse_completion,
        K_res, pve_res, time_d,
        file = file_name)
 }
@@ -562,6 +610,10 @@ while (num.sim < num_sim) {
 # load("RData/Kraus-tdist.RData")
 # load("RData/Kraus-normal-prop1.RData")
 # load("RData/Kraus-normal-prop2.RData")
+# load("RData/Corr-normal-prop0.RData")
+# load("RData/Corr-tdist.RData")
+# load("RData/Corr-normal-prop1.RData")
+# load("RData/Corr-normal-prop2.RData")
 
 
 ### Summary results
@@ -572,12 +624,12 @@ if (is.null(K)) {
 }
 
 res <- data.frame(Method = c("Yao","Kraus","R-Kraus","Boente",
-                             "OGK(non-smooth)","OGK(smooth)")) %>% 
+                             "OGK(non-smooth)","OGK(smooth)")) %>%
   # PVE
   left_join(data.frame(
     Method = colnames(PVE_K),
     "PVE" = format(round(colMeans(PVE_K), 3), 3)
-  ), by = "Method") %>% 
+  ), by = "Method") %>%
   # Eigen MISE
   left_join(data.frame(
     Method = colnames(mse_eigen),
@@ -587,7 +639,7 @@ res <- data.frame(Method = c("Yao","Kraus","R-Kraus","Boente",
       format(round(apply(mse_eigen, 2, sd), 3), 3),
       ")"
     )
-  ), by = "Method") %>% 
+  ), by = "Method") %>%
   # Eigen Angle
   left_join(data.frame(
     Method = colnames(mse_eigen2),
@@ -597,7 +649,7 @@ res <- data.frame(Method = c("Yao","Kraus","R-Kraus","Boente",
       format(round(apply(mse_eigen2, 2, sd), 3), 3),
       ")"
     )
-  ), by = "Method") %>% 
+  ), by = "Method") %>%
   # Reconstruction MISE
   left_join(data.frame(
     Method = colnames(mse_reconstr),
@@ -607,7 +659,7 @@ res <- data.frame(Method = c("Yao","Kraus","R-Kraus","Boente",
       format(round(apply(mse_reconstr, 2, sd), 3), 3),
       ")"
     )
-  ), by = "Method") %>% 
+  ), by = "Method") %>%
   # Completion MISE
   left_join(data.frame(
     Method = colnames(mse_completion),
@@ -618,9 +670,9 @@ res <- data.frame(Method = c("Yao","Kraus","R-Kraus","Boente",
       ")"
     )
   ), by = "Method")
-res
+print(res)
 
 # Make results to LaTeX code
 library(xtable)
-xtable(res[-5, -(1:2)])
+print( xtable(res[-5, -(1:2)]) )
 
