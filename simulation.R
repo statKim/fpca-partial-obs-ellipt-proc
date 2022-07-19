@@ -151,7 +151,7 @@ while (num.sim < num_sim) {
                         out.type = out_type,
                         dist = dist_type)
   } else if (setting == 'Corr') {
-    r.par <- 150
+    r.par <- 800
     loc_ind <- sample(1:ncol(dist.mat), n)
     x.2 <- sim_corr(n = n,
                     type = data_type,
@@ -589,7 +589,8 @@ while (num.sim < num_sim) {
                                             pca.ogk.obj = pca.ogk.obj,
                                             pca.ogk.sm.obj = pca.ogk.sm.obj))
   if (dist_type == "tdist") {
-    file_name <- paste0("RData/", setting, "-", dist_type, ".RData")
+    # file_name <- paste0("RData/", setting, "-", dist_type, ".RData")
+    file_name <- paste0("RData/", setting, "-", dist_type, "_zeta", r.par, ".RData")
   } else {
     file_name <- paste0("RData/", setting, "-", dist_type,
                         "-prop", out_prop*10, ".RData")
